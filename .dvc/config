@@ -1,0 +1,6 @@
+[core]
+    remote = localstorage
+[cache]
+    type = copy
+['remote "localstorage"']
+    url = /home/borhan/dvc-remote/casting
