@@ -24,6 +24,7 @@ h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.20
+ImageHash==4.3.2
 ipykernel==7.3.0
 ipython==9.17.1
 ipython_pygments_lexers==1.1.1
@@ -79,6 +80,7 @@ Pygments==2.21.0
 pyparsing==3.3.3
 python-dateutil==2.9.0.post0
 python-json-logger==4.2.0
+PyWavelets==1.10.0
 PyYAML==6.0.3
 pyzmq==27.2.0
 referencing==0.37.0
@@ -87,6 +89,7 @@ rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rfc3987-syntax==1.1.0
 rpds-py==2026.6.3
+scipy==1.18.1
 Send2Trash==2.1.0
 six==1.17.0
 soupsieve==2.9.2
