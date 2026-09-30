@@ -12,4 +12,5 @@ data/processed/*
 !data/processed/.gitignore
 models/*
 !models/.gitkeep
+mlfow.db
 
