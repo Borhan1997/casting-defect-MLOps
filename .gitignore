@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 src/scratch_sanity.py
 data/*
+!data/val_manifest.txt
 !data/raw/
 !data/processed/
 data/raw/*
