@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.models import ResNet18_Weights
+from sklearn.metrics import precision_recall_fscore_support
 
 from src.dataset import CastingDataset, read_manifest
 from src.model import build_model
@@ -40,8 +41,23 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
     avg_loss = total_loss / len(loader.dataset)
     return avg_loss, torch.cat(all_preds), torch.cat(all_labels)
 
+def compute_metrics(preds, labels):
+    """Accuracy plus per-class precision/recall/F1. Class 1 = defective, 0 = OK."""
+    preds, labels = preds.numpy(), labels.numpy()
+    p, r, f1, _ = precision_recall_fscore_support(
+        labels, preds, labels=[0, 1], zero_division=0
+    )
+    return {
+        "accuracy": float((preds == labels).mean()),
+        "precision_ok": float(p[0]), "recall_ok": float(r[0]), "f1_ok": float(f1[0]),
+        "precision_def": float(p[1]), "recall_def": float(r[1]), "f1_def": float(f1[1]),
+    }
+
 
 if __name__ == "__main__":
+    EPOCHS = 5
+    torch.manual_seed(42)  # the new fc layer starts from random weights, so seed it
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = build_model().to(device)
@@ -60,9 +76,16 @@ if __name__ == "__main__":
 
     print(f"device={device} | train={len(train_ds)} | val={len(val_ds)}")
 
-    train_loss, _, _ = run_epoch(model, train_loader, criterion, device, optimizer)
-    print(f"Train loss: {train_loss:.4f}")
+    history = []
+    for epoch in range(1, EPOCHS + 1):
+        train_loss, _, _ = run_epoch(model, train_loader, criterion, device, optimizer)
+        val_loss, val_preds, val_labels = run_epoch(model, val_loader, criterion, device)
 
-    val_loss, val_preds, val_labels = run_epoch(model, val_loader, criterion, device)
-    print(f"Val loss:   {val_loss:.4f}")
-    print(f"Val preds {tuple(val_preds.shape)}, labels {tuple(val_labels.shape)}")
+        metrics = compute_metrics(val_preds, val_labels)
+        history.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, **metrics})
+
+        print(
+            f"Epoch {epoch}/{EPOCHS} | train {train_loss:.4f} | val {val_loss:.4f} | "
+            f"acc {metrics['accuracy']:.3f} | "
+            f"recall OK {metrics['recall_ok']:.3f} | recall def {metrics['recall_def']:.3f}"
+        )
