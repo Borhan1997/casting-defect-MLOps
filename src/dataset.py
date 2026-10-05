@@ -2,6 +2,8 @@ from torch.utils.data import Dataset
 from pathlib import Path
 from PIL import Image
 
+# For Labels : 1 = def_front (defective), 0 = ok_front (OK)
+
 class CastingDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = Path(root_dir)
