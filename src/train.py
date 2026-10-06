@@ -1,4 +1,4 @@
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import argparse
 from src.config import TrainConfig, config_for_version
 from src.config import TrainConfig
@@ -16,13 +16,18 @@ from src.dataset import CastingDataset, read_manifest
 from src.model import build_model
 
 # Labels: 1 = def_front (defective), 0 = ok_front (OK)
-def run_epoch(model, loader, criterion, device, optimizer=None):
+def run_epoch(model, loader, criterion, device, optimizer=None, bn_eval=False):
     """One pass over `loader`. Trains if an optimizer is given, otherwise validates.
 
     Returns (avg_loss, predictions, labels); the last two are int tensors of shape [N].
     """
     training = optimizer is not None
     model.train() if training else model.eval()
+
+    if training and bn_eval:
+        for m in model.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()  # model.train() just flipped them back, so re-apply every epoch
 
     total_loss = 0.0
     all_preds, all_labels = [], []
@@ -72,6 +77,7 @@ def get_git_commit() -> str:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default="v1", choices=["v1", "v2", "v3"])
+    parser.add_argument("--bn-eval", action="store_true")
     args = parser.parse_args()
     cfg = config_for_version(args.version)
 
@@ -110,8 +116,8 @@ if __name__ == "__main__":
         })
 
         for epoch in range(1, EPOCHS + 1):
-            train_loss, _, _ = run_epoch(model, train_loader, criterion, device, optimizer)
-            val_loss, val_preds, val_labels = run_epoch(model, val_loader, criterion, device)
+            train_loss, _, _ = run_epoch(model, train_loader, criterion, device, optimizer, bn_eval=cfg.bn_eval)
+            val_loss, val_preds, val_labels = run_epoch(model, val_loader, criterion, device, bn_eval=cfg.bn_eval)
 
             metrics = compute_metrics(val_preds, val_labels)
             history.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, **metrics})

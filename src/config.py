@@ -37,6 +37,7 @@ class TrainConfig:
     lr: float = 1e-3
     seed: int = 42
     num_workers: int = 0
+    bn_eval: bool = False
 
     # Names (labels for logging; the code still builds AdamW / BCEWithLogitsLoss directly)
     model_name: str = "resnet18"
