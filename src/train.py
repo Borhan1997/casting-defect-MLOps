@@ -1,3 +1,6 @@
+from dataclasses import asdict
+from src.config import TrainConfig
+from pathlib import Path
 import torch
 import subprocess
 import torch.nn as nn
@@ -65,46 +68,40 @@ def get_git_commit() -> str:
 
 
 if __name__ == "__main__":
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
-    mlflow.set_experiment("casting-defect")
-    EPOCHS = 5
-    torch.manual_seed(42)  # the new fc layer starts from random weights, so seed it
+    cfg = TrainConfig()
+
+    mlflow.set_tracking_uri(cfg.mlflow_uri)
+    mlflow.set_experiment(cfg.experiment_name)
+    EPOCHS = cfg.epochs
+    torch.manual_seed(cfg.seed)  # the new fc layer starts from random weights, so seed it
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = build_model().to(device)
     criterion = nn.BCEWithLogitsLoss()
     trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW(trainable_params, lr=1e-3)
+    optimizer = torch.optim.AdamW(trainable_params, lr=cfg.lr)
 
-    manifest = read_manifest()
+    manifest = read_manifest(cfg.val_manifest_path)
     preprocess = ResNet18_Weights.DEFAULT.transforms()
 
-    train_ds = CastingDataset(["data/processed/batch_1"], transform=preprocess, exclude=manifest)
-    val_ds = CastingDataset("data/processed/train", transform=preprocess, include=manifest)
+    train_ds = CastingDataset([Path(cfg.train_root) / b for b in cfg.batches], transform=preprocess, exclude=manifest)
+    val_ds = CastingDataset([Path(cfg.train_root) / "train"], transform=preprocess, include=manifest)
 
-    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=32, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, num_workers=cfg.num_workers)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False, num_workers=cfg.num_workers)
 
     print(f"device={device} | train={len(train_ds)} | val={len(val_ds)}")
 
     history = []
-    with mlflow.start_run(run_name="v1-baseline"):
+    with mlflow.start_run(run_name=cfg.run_name):
         mlflow.set_tag("git_commit", get_git_commit())
         mlflow.log_params({
-            "data version": "data-v1",
-            "train size": len(train_ds),
-            "val size": len(val_ds),
-            "batch size": 32,
-            "optimizer": "AdamW",
-            "learning rate": 1e-3,
-            "epochs": EPOCHS,
-            "seed": 42,
-            "model": "resnet18",
-            "trainable params": sum(p.numel() for p in trainable_params),
-            "trainable layers": "fc",
-            "loss": "BCEWithLogitsLoss",
-            "validation fraction": 0.15
+            **asdict(cfg),
+            "batches": ",".join(cfg.batches),  # later key overrides the tuple from asdict
+            "train_size": len(train_ds),
+            "val_size": len(val_ds),
+            "trainable_params": sum(p.numel() for p in trainable_params),
         })
 
         for epoch in range(1, EPOCHS + 1):
