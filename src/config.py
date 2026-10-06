@@ -1,4 +1,18 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+# Which batch folders each data version trains on (cumulative).
+VERSIONS = {
+    "v1": {"data_version": "data-v1", "batches": ("batch_1",), "run_name": "v1-baseline"},
+    "v2": {"data_version": "data-v2", "batches": ("batch_1", "batch_2"), "run_name": "v2"},
+    "v3": {"data_version": "data-v3", "batches": ("batch_1", "batch_2", "batch_3"), "run_name": "v3"},
+}
+
+
+def config_for_version(version: str, base: "TrainConfig | None" = None) -> "TrainConfig":
+    """Return a copy of the base config with the fields for the chosen data version."""
+    if version not in VERSIONS:
+        raise ValueError(f"Unknown version {version!r}; choose from {list(VERSIONS)}")
+    return replace(base or TrainConfig(), **VERSIONS[version])
 
 
 @dataclass(frozen=True)

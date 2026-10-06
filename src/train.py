@@ -1,4 +1,6 @@
 from dataclasses import asdict
+import argparse
+from src.config import TrainConfig, config_for_version
 from src.config import TrainConfig
 from pathlib import Path
 import torch
@@ -68,7 +70,10 @@ def get_git_commit() -> str:
 
 
 if __name__ == "__main__":
-    cfg = TrainConfig()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--version", default="v1", choices=["v1", "v2", "v3"])
+    args = parser.parse_args()
+    cfg = config_for_version(args.version)
 
     mlflow.set_tracking_uri(cfg.mlflow_uri)
     mlflow.set_experiment(cfg.experiment_name)
