@@ -81,6 +81,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = config_for_version(args.version)
 
+    if args.bn_eval:
+        cfg = replace(cfg, bn_eval=True, run_name=f"{cfg.run_name}-bneval")
+
+
     mlflow.set_tracking_uri(cfg.mlflow_uri)
     mlflow.set_experiment(cfg.experiment_name)
     EPOCHS = cfg.epochs
