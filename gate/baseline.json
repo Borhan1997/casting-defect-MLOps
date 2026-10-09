@@ -1,0 +1,41 @@
+{
+  "baseline": {
+    "name": "v3",
+    "training_run_id": "6f8baae3c08c4bc6a3f7939826594306",
+    "eval_run_id": "2b6429102d254e9bb47a647fce5619af",
+    "data_version": "data-v3",
+    "git_commit": "cd4a63ce8b3b11c10a957731fcd058ac96f54d20",
+    "test_set": {
+      "size": 651,
+      "defective": 453,
+      "ok": 198
+    },
+    "errors": {
+      "missed_defects": 11,
+      "false_alarms": 0
+    },
+    "metrics": {
+      "test_loss": 0.07858724094435184,
+      "test_accuracy": 0.9831029185867896,
+      "test_precision_ok": 0.9473684210526315,
+      "test_recall_ok": 1.0,
+      "test_f1_ok": 0.972972972972973,
+      "test_precision_def": 1.0,
+      "test_recall_def": 0.9757174392935982,
+      "test_f1_def": 0.9877094972067039
+    }
+  },
+  "policy": {
+    "primary_metric": "test_recall_def",
+    "guard_metric": "test_recall_ok",
+    "regression_margin_errors": {
+      "missed_defects": 3,
+      "false_alarms": 3
+    },
+    "absolute_floor_errors": {
+      "max_missed_defects": 20,
+      "max_false_alarms": 9
+    },
+    "logged_only": ["test_loss", "test_accuracy"]
+  }
+}
