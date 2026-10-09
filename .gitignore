@@ -1,7 +1,11 @@
 .venv/
 __pycache__/
 *.pyc
+mlruns/
+verify_model.py
+src/scratch_sanity.py
 data/*
+!data/val_manifest.txt
 !data/raw/
 !data/processed/
 data/raw/*
@@ -13,3 +17,5 @@ data/processed/*
 models/*
 !models/.gitkeep
 
+mlflow.db
+mlartifacts/

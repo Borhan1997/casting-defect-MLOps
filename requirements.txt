@@ -15,6 +15,11 @@ async-lru==2.3.0
 asyncssh==2.24.0
 atpublic==8.0.1
 attrs==26.1.0
+mlflow==3.16.1
+mlflow-skinny==3.16.1
+mlflow-tracing==3.16.1
+torch==2.14.0
+torchvision==0.29.0
 babel==2.18.0
 beautifulsoup4==4.15.0
 billiard==4.3.0
