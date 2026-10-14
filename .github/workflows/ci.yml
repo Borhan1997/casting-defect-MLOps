@@ -68,3 +68,8 @@ jobs:
         run: |
           python -m src.train --version v3
         timeout-minutes: 45
+      - name: Evaluate model
+        run: |
+          RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('sqlite:///mlflow.db'); print(mlflow.search_runs(experiment_names=['casting-defect'], order_by=['attributes.start_time DESC'], max_results=1).iloc[0]['run_id'])")
+          python -m src.evaluate --run-id "$RUN_ID"
+        timeout-minutes: 15
