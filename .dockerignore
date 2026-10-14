@@ -1,0 +1,17 @@
+# Keep the build context small: only requirements-serving.txt, src/api.py,
+# src/inference.py and models/baseline.pt are actually used by the Dockerfile.
+# (models/ is intentionally NOT listed: the image needs baseline.pt.)
+.git
+.github
+.venv
+.dvc
+data/
+mlruns/
+notebooks/
+tests/
+gate/
+scripts/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/

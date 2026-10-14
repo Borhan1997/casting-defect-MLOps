@@ -14,8 +14,7 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/processed/.gitignore
-models/*
-!models/.gitkeep
+
 
 mlflow.db
 mlartifacts/
