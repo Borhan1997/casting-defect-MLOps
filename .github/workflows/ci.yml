@@ -41,3 +41,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch==2.14.0 torchvision==0.29.0 --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -r requirements.txt
+      - name: Configure DVC remote
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          dvc remote modify --local dagshub auth basic
+          dvc remote modify --local dagshub user Borhan1997
+          dvc remote modify --local dagshub password "$DAGSHUB_TOKEN"
+      - name: Pull data from DVC remote
+        run: |
+          dvc pull -r dagshub data/processed/test.dvc data/processed/batch_1.dvc data/processed/batch_2.dvc data/processed/batch_3.dvc
