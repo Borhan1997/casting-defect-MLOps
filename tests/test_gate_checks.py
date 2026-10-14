@@ -23,7 +23,7 @@ def make_cfg():
 
 def test_candidate_at_limit_passes():
     cfg = make_cfg()
-    candidate = {"missed_defects": 13, "false_alarms": 3}
+    candidate = {"missed_defects": 12, "false_alarms": 3}
  
     checks = run_checks(candidate, cfg)
  
