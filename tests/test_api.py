@@ -11,13 +11,11 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-pytest.importorskip("fastapi")
-pytest.importorskip("httpx")
-
-pytestmark = pytest.mark.skipif(
-    not Path("models/baseline.pt").exists(),
-    reason="models/baseline.pt not available (pull it with DVC)",
-)
+if not Path("models/baseline.pt").exists():
+    pytest.skip(
+        "models/baseline.pt not available (pull it with DVC)",
+        allow_module_level=True,
+    )
 
 from src.api import app # noqa: E402
 
