@@ -11,7 +11,15 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from src.api import app
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+
+pytestmark = pytest.mark.skipif(
+    not Path("models/baseline.pt").exists(),
+    reason="models/baseline.pt not available (pull it with DVC)",
+)
+
+from src.api import app # noqa: E402
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
