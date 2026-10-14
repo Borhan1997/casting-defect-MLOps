@@ -73,8 +73,18 @@ jobs:
           RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('sqlite:///mlflow.db'); print(mlflow.search_runs(experiment_names=['casting-defect'], order_by=['attributes.start_time DESC'], max_results=1).iloc[0]['run_id'])")
           python -m src.evaluate --run-id "$RUN_ID"
         timeout-minutes: 15
-      - name: Gate Check
+      - name: Gate check
         run: |
+          set -o pipefail
           EVAL_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('sqlite:///mlflow.db'); print(mlflow.search_runs(experiment_names=['casting-defect'], filter_string=\"tags.training_run_id != ''\", order_by=['attributes.start_time DESC'], max_results=1).iloc[0]['run_id'])")
-          python gate/gate.py --eval-run-id "$EVAL_ID" --tracking-uri sqlite:///mlflow.db
+          python gate/gate.py --eval-run-id "$EVAL_ID" --tracking-uri sqlite:///mlflow.db 2>&1 | tee gate_output.txt
         timeout-minutes: 5
+      - name: Gate summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f gate_output.txt ]; then
+            echo '## Gate result' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat gate_output.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
