@@ -48,6 +48,13 @@ jobs:
           dvc remote modify --local dagshub auth basic
           dvc remote modify --local dagshub user Borhan1997
           dvc remote modify --local dagshub password "$DAGSHUB_TOKEN"
+      - name: Cache DVC data
+        uses: actions/cache@v4
+        with:
+          path: .dvc/cache
+          key: dvc-cache-${{ hashFiles('data/processed/*.dvc') }}
+          restore-keys: |
+            dvc-cache-
       - name: Pull data from DVC remote
         run: |
           dvc pull -v -r dagshub data/processed/test.dvc
