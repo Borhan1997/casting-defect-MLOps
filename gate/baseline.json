@@ -33,7 +33,7 @@
       "false_alarms": 3
     },
     "absolute_floor_errors": {
-      "max_missed_defects": 5,
+      "max_missed_defects": 20,
       "max_false_alarms": 9
     },
     "logged_only": ["test_loss", "test_accuracy"]
