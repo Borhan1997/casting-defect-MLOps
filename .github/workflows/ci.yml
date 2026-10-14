@@ -58,6 +58,12 @@ jobs:
       - name: Pull data from DVC remote
         run: |
           dvc pull -v -r dagshub data/processed/test.dvc data/processed/batch_1.dvc data/processed/batch_2.dvc data/processed/batch_3.dvc
+      - name: Rebuild train folder
+        run: |
+          mkdir -p data/processed/train
+          cp -r data/processed/batch_1/. data/processed/train/
+          cp -r data/processed/batch_2/. data/processed/train/
+          cp -r data/processed/batch_3/. data/processed/train/
       - name: Train Model
         run: |
           python -m src.train --version v3
