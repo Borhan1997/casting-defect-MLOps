@@ -58,7 +58,7 @@ jobs:
       - name: Pull data from DVC remote
         run: |
           dvc pull -v -r dagshub data/processed/test.dvc data/processed/batch_1.dvc data/processed/batch_2.dvc data/processed/batch_3.dvc
-      - name: Rebuild train folder
+      - name: Rebuild the Train folder
         run: |
           mkdir -p data/processed/train
           cp -r data/processed/batch_1/. data/processed/train/
@@ -68,8 +68,13 @@ jobs:
         run: |
           python -m src.train --version v3
         timeout-minutes: 45
-      - name: Evaluate model
+      - name: Evaluate Model
         run: |
           RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('sqlite:///mlflow.db'); print(mlflow.search_runs(experiment_names=['casting-defect'], order_by=['attributes.start_time DESC'], max_results=1).iloc[0]['run_id'])")
           python -m src.evaluate --run-id "$RUN_ID"
         timeout-minutes: 15
+      - name: Gate Check
+        run: |
+          EVAL_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('sqlite:///mlflow.db'); print(mlflow.search_runs(experiment_names=['casting-defect'], filter_string=\"tags.training_run_id != ''\", order_by=['attributes.start_time DESC'], max_results=1).iloc[0]['run_id'])")
+          python gate/gate.py --eval-run-id "$EVAL_ID" --tracking-uri sqlite:///mlflow.db
+        timeout-minutes: 5
