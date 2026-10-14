@@ -58,3 +58,7 @@ jobs:
       - name: Pull data from DVC remote
         run: |
           dvc pull -v -r dagshub data/processed/test.dvc data/processed/batch_1.dvc data/processed/batch_2.dvc data/processed/batch_3.dvc
+      - name: Train Model
+        run: |
+          python -m src.train --version v3
+        timeout-minutes: 45
