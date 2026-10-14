@@ -4,3 +4,5 @@
     type = copy
 ['remote "localstorage"']
     url = /home/borhan/dvc-remote/casting
+['remote "dagshub"']
+    url = https://dagshub.com/Borhan1997/casting-defect-MLOps.dvc

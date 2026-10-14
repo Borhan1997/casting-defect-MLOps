@@ -55,7 +55,6 @@ def main() -> None:
     shared = set(train) & set(test)
     leaked_test_imgs = sum(len(test[h]) for h in shared)
     pct = 100 * leaked_test_imgs / n_test if n_test else 0.0
-    print(f"\n=== Train/test leakage ===")
     print(f"{leaked_test_imgs} of {n_test} test images ({pct:.1f}%) "
           f"have an exact match in train ({len(shared)} distinct hashes).")
     for h in sorted(shared)[: args.examples]:
@@ -66,7 +65,6 @@ def main() -> None:
     # 2. Duplicates within train
     dup_groups = {h: ps for h, ps in train.items() if len(ps) > 1}
     redundant = sum(len(ps) - 1 for ps in dup_groups.values())
-    print(f"\n=== Duplicates within train ===")
     print(f"{len(dup_groups)} duplicate groups, {redundant} redundant images.")
     for h, ps in list(dup_groups.items())[: args.examples]:
         print(f"  {h}")
