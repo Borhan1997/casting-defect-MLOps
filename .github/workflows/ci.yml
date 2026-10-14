@@ -50,4 +50,4 @@ jobs:
           dvc remote modify --local dagshub password "$DAGSHUB_TOKEN"
       - name: Pull data from DVC remote
         run: |
-          dvc pull -rv dagshub data/processed/test.dvc
+          dvc pull -r -v dagshub data/processed/test.dvc
