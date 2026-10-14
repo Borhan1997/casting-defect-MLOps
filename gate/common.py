@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-from pathlib import Path
 
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient

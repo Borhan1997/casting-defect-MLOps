@@ -1,7 +1,6 @@
 from dataclasses import asdict, replace
 import argparse
-from src.config import TrainConfig, config_for_version
-from src.config import TrainConfig
+from src.config import config_for_version
 from pathlib import Path
 import torch
 import subprocess
