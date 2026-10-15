@@ -3,12 +3,23 @@
 Kept free of FastAPI and training imports, like inference.py.
 """
 
+import io
+import json
+import logging
+import os
+import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+LOG_PATH_ENV = "PREDICTION_LOG_PATH"
+
+logger = logging.getLogger(__name__)
+_log_lock = threading.Lock()
 
 
 def _now_iso() -> str:
@@ -92,3 +103,46 @@ def compute_image_stats(image: Image.Image) -> dict:
         "contrast": contrast,
         "sharpness": sharpness,
     }
+
+
+def get_log_path() -> Path | None:
+    """Log file path from PREDICTION_LOG_PATH, or None when logging is off.
+
+    Read at call time (not import time) so tests can set it with monkeypatch.
+    """
+    value = os.environ.get(LOG_PATH_ENV, "").strip()
+    return Path(value) if value else None
+
+
+def append_record(record: PredictionRecord, path: Path) -> None:
+    """Append one record as a JSON line. The lock keeps lines from interleaving."""
+    line = json.dumps(record.to_dict())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _log_lock, path.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+def log_prediction(image_bytes: bytes, result: dict) -> None:
+    """Log one prediction if PREDICTION_LOG_PATH is set. Never raises.
+
+    Monitoring is allowed to fail; serving is not. Any error is reported as a
+    warning and the caller carries on.
+    """
+    path = get_log_path()
+    if path is None:
+        return
+
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            width, height = image.size
+            stats = compute_image_stats(image)
+        record = PredictionRecord.create(
+            label=result["label"],
+            probability=result["probability"],
+            width=width,
+            height=height,
+            **stats,
+        )
+        append_record(record, path)
+    except Exception:
+        logger.warning("could not log prediction", exc_info=True)
