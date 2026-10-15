@@ -4,7 +4,13 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from src.build_reference import FEATURES, build_reference, load_manifest, main
+from src.build_reference import (
+    FEATURES,
+    build_prediction_reference,
+    build_reference,
+    load_manifest,
+    main,
+)
 
 
 def _make_images(root, n=10):
@@ -80,3 +86,68 @@ def test_main_writes_json(tmp_path):
     profile = json.loads(output.read_text())
     assert profile["n_images"] == 8
     assert profile["n_excluded"] == 2
+    assert "predictions" not in profile
+
+
+def _stub_predict(probabilities):
+    """Return a fake predict(): yields the given probabilities in call order."""
+    results = iter(probabilities)
+
+    def predict(_image_bytes):
+        probability = next(results)
+        label = "def_front" if probability >= 0.5 else "ok_front"
+        return {"label": label, "probability": probability}
+
+    return predict
+
+
+def test_prediction_reference(tmp_path):
+    _make_images(tmp_path)
+    # Images are visited in sorted path order:
+    # def_front/img_0, def_front/img_2, ok_front/img_1, ok_front/img_3
+    include = {
+        "def_front/img_0.png",
+        "def_front/img_2.png",
+        "ok_front/img_1.png",
+        "ok_front/img_3.png",
+    }
+
+    reference = build_prediction_reference(
+        tmp_path, include, _stub_predict([0.9, 0.8, 0.1, 0.2])
+    )
+
+    probability = reference["probability"]
+    assert reference["n_images"] == 4
+    assert reference["defect_rate"] == pytest.approx(0.5)
+    assert probability["mean"] == pytest.approx(0.5)
+    assert len(probability["percentiles"]) == 11
+    assert len(probability["histogram"]) == 10
+    assert sum(probability["histogram"]) == pytest.approx(1.0)
+    json.dumps(reference)
+
+
+def test_prediction_histogram_edges(tmp_path):
+    _make_images(tmp_path, n=2)
+    include = {"def_front/img_0.png", "ok_front/img_1.png"}
+
+    reference = build_prediction_reference(
+        tmp_path, include, _stub_predict([1.0, 0.0])
+    )
+
+    histogram = reference["probability"]["histogram"]
+    assert histogram[0] == pytest.approx(0.5)
+    assert histogram[-1] == pytest.approx(0.5)
+
+
+def test_prediction_reference_raises_when_nothing_matches(tmp_path):
+    _make_images(tmp_path, n=2)
+
+    with pytest.raises(ValueError):
+        build_prediction_reference(tmp_path, {"nope/missing.png"}, _stub_predict([]))
+
+
+def test_predictions_flag_requires_manifest(tmp_path):
+    _make_images(tmp_path)
+
+    with pytest.raises(SystemExit):
+        main(["--images-dir", str(tmp_path), "--predictions"])
