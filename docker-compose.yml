@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      PREDICTION_LOG_PATH: /app/logs/predictions.jsonl
+    volumes:
+      # Bind mount so the host (drift script, step 6) can read the log.
+      # Create ./logs yourself first (mkdir -p logs): Docker would create it
+      # owned by root, and the container user (uid 1000) could not write to it.
+      - ./logs:/app/logs
+    restart: unless-stopped
