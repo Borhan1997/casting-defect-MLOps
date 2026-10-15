@@ -3,14 +3,19 @@
 Run locally:
     uvicorn src.api:app --reload
 Interactive docs: http://127.0.0.1:8000/docs
+Prometheus metrics: http://127.0.0.1:8000/metrics
 """
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from PIL import UnidentifiedImageError
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
 from src.inference import load_model, predict
+from src.metrics import record_prediction
+from src.monitoring import log_prediction
 
 
 @asynccontextmanager
@@ -43,15 +48,29 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    # A plain route rather than a mounted ASGI app: a mount would redirect
+    # GET /metrics to /metrics/.
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_endpoint(file: UploadFile = File(...)) -> PredictionResponse:
     image_bytes = await file.read()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file.")
 
+    start = time.perf_counter()
     try:
         result = predict(image_bytes)
     except UnidentifiedImageError:
         raise HTTPException(status_code=400, detail="File is not a readable image.")
+    latency = time.perf_counter() - start
+
+    # Monitoring only runs for served predictions. Neither call can raise, so
+    # neither can affect the response. Logging is opt-in (PREDICTION_LOG_PATH).
+    record_prediction(image_bytes, result, latency)
+    log_prediction(image_bytes, result)
 
     return PredictionResponse(**result)
