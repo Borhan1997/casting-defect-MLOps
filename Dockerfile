@@ -15,11 +15,15 @@ RUN useradd --create-home --uid 1000 appuser
 # Only what serving needs, not the training code.
 # The package marker is created here so the image doesn't depend on the contents
 # of the repo's src/__init__.py.
-COPY src/api.py src/inference.py src/monitoring.py ./src/
+COPY src/api.py src/inference.py src/monitoring.py src/metrics.py ./src/
 RUN touch src/__init__.py && chown -R appuser:appuser /app
 
 COPY --chown=appuser:appuser models/baseline.pt ./models/baseline.pt
 ENV MODEL_PATH=/app/models/baseline.pt
+
+# Reference statistics: they define the bucket edges of the image histograms.
+COPY --chown=appuser:appuser monitoring/reference_profile.json ./monitoring/reference_profile.json
+ENV REFERENCE_PROFILE_PATH=/app/monitoring/reference_profile.json
 
 USER appuser
 
