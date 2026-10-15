@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 fastapi==0.142.2
+numpy==2.5.3
 pillow==12.3.0
 python-multipart==0.0.32
 torch==2.14.0
