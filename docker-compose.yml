@@ -21,3 +21,14 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    ports:
+      - "3000:3000"
+    volumes:
+      # Provisioned datasource (and, later, dashboards) are loaded at startup.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
