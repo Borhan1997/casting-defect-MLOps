@@ -11,3 +11,13 @@ services:
       # owned by root, and the container user (uid 1000) could not write to it.
       - ./logs:/app/logs
     restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+    restart: unless-stopped
