@@ -11,6 +11,7 @@ from PIL import UnidentifiedImageError
 from pydantic import BaseModel
 
 from src.inference import load_model, predict
+from src.monitoring import log_prediction
 
 
 @asynccontextmanager
@@ -53,5 +54,8 @@ async def predict_endpoint(file: UploadFile = File(...)) -> PredictionResponse:
         result = predict(image_bytes)
     except UnidentifiedImageError:
         raise HTTPException(status_code=400, detail="File is not a readable image.")
+
+    # Opt-in (PREDICTION_LOG_PATH) and never raises, so it cannot affect the response.
+    log_prediction(image_bytes, result)
 
     return PredictionResponse(**result)
