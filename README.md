@@ -1,10 +1,10 @@
 # casting-defect-MLOps
 
-Most of the work in a production ML system isn't the model. This repo builds the machinery around one: versioned data, reproducible training, an evaluation gate that can block a bad model, CI that runs all of it on every change, and (still to come) a containerized API with drift monitoring.
+Most of the work in a production ML system isn't the model. This repo builds the machinery around one: versioned data, reproducible training, an evaluation gate that can block a bad model, CI that runs all of it on every change, a containerized API, and drift monitoring on the traffic it serves.
 
 The task itself is simple: spot defective metal castings in photos. The pipeline around it is the interesting part.
 
-The project is built in seven stages, and each one gets written up here when it's finished. Stages 1 to 5 are done.
+The project was built in seven stages, and each one is written up here. All seven are done.
 
 ## Task and data
 
@@ -20,9 +20,9 @@ The model is a ResNet18 pretrained on ImageNet, with only a new final layer trai
 | Experiment tracking | MLflow (local SQLite backend) |
 | Training | PyTorch, ResNet18 |
 | CI/CD | GitHub Actions |
-| Serving | FastAPI (planned) |
-| Containerization | Docker, GHCR (planned) |
-| Monitoring | Prometheus, Grafana (planned) |
+| Serving | FastAPI |
+| Containerization | Docker, GHCR |
+| Monitoring | Prometheus, Grafana, plus a PSI drift script |
 
 ## Stage plan
 
@@ -33,8 +33,8 @@ The model is a ResNet18 pretrained on ImageNet, with only a new final layer trai
 | 3 | PyTorch training pipeline (ResNet18) and MLflow tracking | Done |
 | 4 | Evaluation gate against a stored baseline | Done |
 | 5 | GitHub Actions CI/CD | Done |
-| 6 | FastAPI serving | Not started |
-| 7 | Prediction logging and drift detection dashboard | Not started |
+| 6 | FastAPI serving, Docker image, GHCR | Done |
+| 7 | Prediction logging, Prometheus and Grafana, drift detection | Done |
 
 ## Running it
 
@@ -65,6 +65,8 @@ ruff check .
 ```
 
 Run IDs show up in the MLflow UI (`mlflow ui --backend-store-uri sqlite:///mlflow.db`). Run everything from the repo root.
+
+To run the API and the monitoring stack, skip to the end of Stage 6 and Stage 7.
 
 ---
 
@@ -190,44 +192,217 @@ DagsHub was chosen as the remote because it's free and needed the least setup. T
 
 ---
 
+
+---
+
+## Stage 6: Serving
+
+Code: [`src/api.py`](src/api.py), [`src/inference.py`](src/inference.py), [`Dockerfile`](Dockerfile)
+
+**The API.** A small FastAPI app. The model loads once at startup, not per request.
+- `GET /health` returns `{"status": "ok"}`.
+- `POST /predict` takes an image as a multipart file upload named `file` and returns `{"label": "def_front", "probability": 0.97}`. The probability is the model's P(defect), and the label comes from a fixed 0.5 threshold, the same one the gate uses.
+- An empty upload gets a 400 (`Empty file.`), and so does a file that isn't a readable image.
+
+```bash
+curl -F "file=@tests/fixtures/def_front.jpg" http://localhost:8000/predict
+```
+
+**Inference code.** `src/inference.py` has `load_model()` (cached) and `predict(image_bytes)`, and imports nothing from the training code. That keeps the serving image small. It applies the same torchvision ResNet18 preprocessing as training.
+
+**The model file.** `models/baseline.pt` is a plain `state_dict`, tracked by DVC (`models/baseline.pt.dvc`) and stored on DagsHub like the data. `scripts/export_model.py` is the script that exports it. Pull it with:
+
+```bash
+dvc pull -r dagshub models/baseline.pt.dvc
+```
+
+**The image.** `python:3.12-slim`, CPU-only PyTorch with pinned versions (`requirements-serving.txt`), and a non-root user (uid 1000). Only the serving files and the model are copied in. Dependencies are installed before the code, so a code change doesn't reinstall PyTorch.
+
+```bash
+docker build -t casting-defect-api .
+docker run --rm -p 8000:8000 casting-defect-api
+```
+
+**CI.** A third job, **serve**, runs after the pipeline job passes. It pulls the model, builds the image, starts it and smoke-tests it: the health check, a prediction, and (since Stage 7) the `/metrics` endpoint. On pushes to `main` it then pushes the image to GHCR as `ghcr.io/borhan1997/casting-defect-mlops`, tagged `latest` and `sha-<commit>`. Pull requests build and test the image but don't publish it. I checked that the published image gives the same answers as the local one.
+
+**Tests.** [`tests/test_api.py`](tests/test_api.py) uses FastAPI's `TestClient` with the two fixture images in `tests/fixtures/`. The module is skipped when `models/baseline.pt` isn't there, so `pytest` still works on a clone that hasn't pulled the model.
+
+---
+
+## Stage 7: Prediction logging and drift monitoring
+
+Training data is a snapshot. A deployed model sees whatever the camera sends next, and nobody labels it, so accuracy can't be tracked. What can be tracked is whether the inputs and the model's outputs still look like they did on the data the model was checked against.
+
+Dashboard (the demo run described below):
+
+![Grafana dashboard](docs/images/dashboard.png)
+
+### What gets recorded
+
+**Prediction log.** Off by default. If `PREDICTION_LOG_PATH` is set, every served prediction appends one line of JSON to that file: timestamp, request ID, label, probability, image width and height, and three image statistics. No images are stored. Rejected requests (empty or unreadable files) aren't logged. The logger never raises, so a full disk can't turn into a failed prediction. Code: [`src/monitoring.py`](src/monitoring.py).
+
+**Image statistics.** Computed on the original image, before any resizing:
+- brightness: mean of the grayscale image
+- contrast: standard deviation of the grayscale image
+- sharpness: variance of the Laplacian (low means blurry)
+
+**Prometheus metrics.** `GET /metrics` exposes a prediction counter by label, a latency histogram, a histogram of the defect probability, and histograms of the three image statistics. Code: [`src/metrics.py`](src/metrics.py).
+
+### The reference profile
+
+Drift only means something against a reference. [`src/build_reference.py`](src/build_reference.py) writes `monitoring/reference_profile.json`:
+- **Input statistics** come from the 5638 training images the baseline model was trained on (train minus the 995 validation images). The test set is left alone.
+- **Prediction statistics** come from running the model on the 995 validation images: defect rate 0.565, mean probability 0.568, and a 10-bin histogram of the probability. About 83% of the probability mass sits in the two outer bins, so the model is usually confident.
+
+The file is committed to Git and copied into the Docker image. The histogram buckets of the image statistics use the deciles of the reference, so the dashboard and the drift script look at the same bins. To rebuild it (only needed if the baseline model changes):
+
+```bash
+python -m src.build_reference --images-dir data/processed/train \
+  --val-manifest data/val_manifest.txt --predictions
+```
+
+### Running the stack
+
+```bash
+mkdir -p logs        # create it yourself, see below
+docker compose up -d
+```
+
+| Service | URL | Notes |
+|---|---|---|
+| API | http://localhost:8000 | writes `logs/predictions.jsonl` |
+| Prometheus | http://localhost:9090 | scrapes `/metrics` every 5 seconds |
+| Grafana | http://localhost:3000 | login `admin` / `admin` |
+
+Create `logs/` before the first `up`. If Docker creates it, it belongs to root and the container user (uid 1000) can't write to it.
+
+Grafana comes up already configured: the Prometheus datasource and the dashboard are provisioned from files under `monitoring/grafana/provisioning/`, so there's nothing to click through. The dashboard (uid `casting-defect`) has three rows:
+- **Prediction drift:** defect rate, mean probability, and the share of uncertain predictions (probability between 0.1 and 0.9).
+- **Input drift:** mean brightness, contrast and sharpness.
+- **Service health:** p95 latency.
+
+Each drift panel draws a dashed line at the reference value, so you can see the gap without reading numbers. Those lines are fixed numbers written into the dashboard JSON when it was generated. If you rebuild the reference profile, they need regenerating too.
+
+### The drift script
+
+The dashboard is for looking. [`src/drift.py`](src/drift.py) is for deciding. It reads the last N records of the log and scores each signal against the reference with the population stability index (PSI):
+
+- Brightness, contrast and sharpness are binned into the reference deciles. Values outside the reference range are clipped into the outer bins.
+- The probability is binned into three groups: below 0.1, 0.1 to 0.9, and 0.9 or above.
+- Empty bins are floored at 1e-4 so the log is defined.
+- Under 0.1 is stable, 0.1 to 0.25 is moderate, 0.25 and up is major. These are the usual rules of thumb for PSI, not something tuned on this data.
+
+```bash
+python -m src.drift                     # last 200 records
+python -m src.drift --window 300 --json-out drift.json
+```
+
+It prints a table and exits with `0` (nothing major), `1` (at least one major signal) or `2` (not enough data, or the log can't be read). The minimum is 200 records. PSI on a small window is noisy: in a simulation on clean traffic, a 100-record window read "moderate" on at least one signal about three times in four, and 200 records cut that to roughly one in thirteen with "major" practically never. So the script refuses to score fewer.
+
+### Demo: making the drift show up
+
+[`src/simulate_drift.py`](src/simulate_drift.py) replays images against the running API, 300 requests at 3 per second per phase, and each phase was scored with `python -m src.drift --window 300` on a fresh log:
+
+- **clean:** validation images as they are. The same distribution as the reference.
+- **natural:** the test images as they are.
+- **dark:** the same validation images with brightness halved.
+- **blur:** the same validation images with a Gaussian blur of radius 2.
+
+```bash
+python -m src.simulate_drift                    # all four phases, in order
+python -m src.simulate_drift --phases dark      # or just one
+```
+
+| Phase | Defect rate | Brightness PSI | Contrast PSI | Sharpness PSI | Probability PSI | Overall |
+|---|---|---|---|---|---|---|
+| clean | 0.580 | 0.019 | 0.019 | 0.036 | 0.004 | stable |
+| natural | 0.713 | 0.178 | 0.126 | 0.334 | 0.081 | major |
+| dark | 0.830 | 8.283 | 8.283 | 7.911 | 1.579 | major |
+| blur | 0.443 | 0.021 | 1.369 | 8.283 | 0.464 | major |
+
+(The reference defect rate is 0.565. 8.283 is the highest PSI the script can return with these settings: every record falls outside the reference range.)
+
+What these runs show:
+- **Clean traffic stays quiet,** which is the baseline that makes the other rows mean something.
+- **The two faults push the defect rate in opposite directions.** Dark images raised it from 0.58 to 0.83, and blurred ones lowered it to 0.443. There are no labels in this setup, so this is inference: the dark images are the same ones the clean phase scored, so the extra defects are probably false alarms, and the blurred images probably hide real defects. I didn't measure that.
+- **Contrast flagged the blur** (PSI 1.37) even though brightness didn't move, because the reference contrast spread is narrow (a standard deviation of about 3.5 across images).
+- **The natural phase is flagged as major, yet the model is fine on that data.** The test set is sharper than the training set (mean sharpness 236 against 183), and the baseline still gets 98.3% accuracy on it. Drift means the inputs changed. It doesn't mean the model got worse, and only labels can tell you that.
+
+### Limitations
+
+- **The defect rate is reported but not scored.** On the natural phase it moved by 15 points, but the 3-bin probability PSI stayed at 0.081 ("stable"), so a shift in how many defects come in can pass unnoticed. The script prints the gap next to the table; it doesn't count toward the overall verdict.
+- **The drift script is run by hand.** Nothing schedules it and nothing alerts. Prometheus and Grafana only display.
+- **It's all local.** The compose stack runs on one machine. The CI job builds and publishes the image, but nothing deploys it.
+- **Prometheus and Grafana keep no data between runs.** There are no volumes for them, so `docker compose down` clears the history. The prediction log survives because `logs/` is a bind mount.
+- **PSI is only as good as its window.** Under 200 records the result is mostly noise (see above).
+- **No labels, no accuracy.** Everything in this stage is a proxy for the model going wrong.
+
+### Tests
+
+New test files cover the logger ([`test_monitoring.py`](tests/test_monitoring.py), [`test_api_logging.py`](tests/test_api_logging.py)), the reference builder, the metrics (including `/metrics` through the API), the drift scoring and the simulator. The full suite is 104 tests.
+
+---
+
 ## Repo layout
 
 ```
 .github/workflows/
-  ci.yml            # lint, tests, then train -> evaluate -> gate
+  ci.yml                    # lint and tests, train -> evaluate -> gate, then build/test/push the image
 data/
-  raw/              # original Kaggle download (local only, not versioned)
-  processed/        # leakage-free, DVC-tracked: test, batch_1/2/3 (and a local train/)
-  val_manifest.txt  # fixed validation split, tracked in Git
+  raw/                      # original Kaggle download (local only, not versioned)
+  processed/                # leakage-free, DVC-tracked: test, batch_1/2/3 (and a local train/)
+  val_manifest.txt          # fixed validation split, tracked in Git
+docs/
+  images/                   # dashboard screenshot used above
 gate/
-  baseline.json     # current baseline and gate policy
-  common.py         # shared checks and loading logic
-  gate.py           # the gate itself
-  promote.py        # manual baseline promotion (dry run by default)
+  baseline.json             # current baseline and gate policy
+  common.py                 # shared checks and loading logic
+  gate.py                   # the gate itself
+  promote.py                # manual baseline promotion (dry run by default)
+logs/                       # prediction log from docker compose (not in Git)
+models/
+  baseline.pt               # serving model, a state_dict tracked by DVC (baseline.pt.dvc)
+monitoring/
+  prometheus.yml            # scrape config
+  reference_profile.json    # reference statistics, tracked in Git, copied into the image
+  grafana/provisioning/     # datasource and dashboard, loaded when Grafana starts
 notebooks/
   01_eda.ipynb
   02_dataset_sanity_check.ipynb
   03_model_sanity_check.ipynb
 scripts/
-  find_leakage.py   # content-hash train/test and within-split duplicate detection
-  clean_splits.py   # builds data/processed/ with leaked test images removed
-  make_batches.py   # splits train into 3 stratified batches for DVC
-  make_val_split.py # creates data/val_manifest.txt
+  find_leakage.py           # content-hash train/test and within-split duplicate detection
+  clean_splits.py           # builds data/processed/ with leaked test images removed
+  make_batches.py           # splits train into 3 stratified batches for DVC
+  make_val_split.py         # creates data/val_manifest.txt
+  export_model.py           # exports the trained model to models/baseline.pt
 src/
-  config.py         # TrainConfig and the v1/v2/v3 data versions
-  dataset.py        # CastingDataset and manifest reading
-  model.py          # ResNet18 with a frozen backbone
-  train.py          # training loop and MLflow logging
-  evaluate.py       # one-shot test-set evaluation
+  config.py                 # TrainConfig and the v1/v2/v3 data versions
+  dataset.py                # CastingDataset and manifest reading
+  model.py                  # ResNet18 with a frozen backbone
+  train.py                  # training loop and MLflow logging
+  evaluate.py               # one-shot test-set evaluation
+  api.py                    # FastAPI app (/health, /predict, /metrics)
+  inference.py              # model loading and prediction, no training imports
+  monitoring.py             # prediction logging and image statistics
+  metrics.py                # Prometheus metrics
+  build_reference.py        # writes monitoring/reference_profile.json
+  drift.py                  # PSI drift report over the prediction log
+  simulate_drift.py         # replays clean, natural, dark and blurred traffic
 tests/
+  fixtures/                 # one defective and one OK image
   test_gate_checks.py
+  test_api.py
+  test_api_logging.py
+  test_api_metrics.py
+  test_monitoring.py
+  test_metrics.py
+  test_build_reference.py
+  test_drift.py
+  test_simulate_drift.py
 reports/
-  figures/          # EDA plots (class balance, pixel intensity, sample grid)
-  leaked_files.txt  # audit trail of removed leaked images
-models/             # empty; trained models are stored as MLflow artifacts
-requirements.txt, requirements-dev.txt, pytest.ini, ruff.toml
+  figures/                  # EDA plots (class balance, pixel intensity, sample grid)
+  leaked_files.txt          # audit trail of removed leaked images
+Dockerfile, .dockerignore, docker-compose.yml
+requirements.txt, requirements-dev.txt, requirements-serving.txt, pytest.ini, ruff.toml
 ```
-
----
-
-Stages 6 and 7 (serving and drift monitoring) get their own sections here once they're done.
