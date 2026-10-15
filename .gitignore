@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 mlruns/
+logs/
 verify_model.py
 src/scratch_sanity.py
 data/*
