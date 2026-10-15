@@ -154,6 +154,8 @@ jobs:
           curl -fs http://localhost:8000/health | grep -q '"status":"ok"'
           curl -fs -X POST -F "file=@tests/fixtures/def_front.jpg" http://localhost:8000/predict | grep -q '"label":"def_front"'
           curl -fs -X POST -F "file=@tests/fixtures/ok_front.jpg" http://localhost:8000/predict | grep -q '"label":"ok_front"'
+          curl -fs http://localhost:8000/metrics | grep -q 'cv_predictions_total{label="def_front"}'
+          curl -fs http://localhost:8000/metrics | grep -q 'cv_image_brightness_bucket'
 
       - name: Container logs on failure
         if: failure()
